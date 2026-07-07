@@ -1,0 +1,6 @@
+{
+  "name": "NovaOS",
+  "description": "Multi-Tenant AI Business Operating System featuring RAG, Inventory & Invoice management, and Voice AI integrations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
