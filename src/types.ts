@@ -95,3 +95,14 @@ export interface ChatMessage {
   timestamp: string;
   references?: Array<{ name: string; score: number; snippet: string }>;
 }
+
+export interface LedgerItem {
+  id: string;
+  buyerName: string;
+  phone: string;
+  email: string;
+  itemsBought: string;
+  amount: number;
+  date: string;
+  orgId: string;
+}

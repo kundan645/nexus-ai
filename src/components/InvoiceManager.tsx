@@ -29,13 +29,15 @@ interface InvoiceManagerProps {
   onAddInvoice: (invoice: Omit<Invoice, "id" | "orgId" | "invoiceNumber">) => void;
   onUpdateInvoiceStatus: (id: string, status: 'paid' | 'unpaid' | 'overdue') => void;
   onTriggerStripeLink: (invoiceId: string, amount: number) => void;
+  theme?: "light" | "dark";
 }
 
 export default function InvoiceManager({
   invoices,
   onAddInvoice,
   onUpdateInvoiceStatus,
-  onTriggerStripeLink
+  onTriggerStripeLink,
+  theme = "dark"
 }: InvoiceManagerProps) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -359,14 +361,22 @@ export default function InvoiceManager({
   };
 
   return (
-    <div className="glass-panel p-6 rounded-2xl border border-white/10 relative" id="invoice_manager">
+    <div className={`p-6 rounded-2xl border relative transition-all ${
+      theme === "dark" 
+        ? "bg-zinc-950/80 border-zinc-800/80 text-zinc-200" 
+        : "bg-white border-slate-200/80 text-slate-800 shadow-sm"
+    }`} id="invoice_manager">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-lg font-bold font-display text-white flex items-center gap-2">
+          <h2 className={`text-lg font-bold font-display flex items-center gap-2 ${
+            theme === "dark" ? "text-white" : "text-slate-900"
+          }`}>
             <FileText className="w-5 h-5 text-blue-400" />
             Billing & Invoices
           </h2>
-          <p className="text-xs text-gray-400">Manage invoices, share payment links, and track UPI settlements in real-time</p>
+          <p className={`text-xs ${theme === "dark" ? "text-zinc-400" : "text-slate-500"}`}>
+            Manage invoices, share payment links, and track UPI settlements in real-time
+          </p>
         </div>
 
         <button 
@@ -382,7 +392,9 @@ export default function InvoiceManager({
       {isAdding && (
         <form 
           onSubmit={handleSubmit}
-          className="mb-6 p-4 rounded-xl bg-white/5 border border-white/10 space-y-4 animate-in fade-in slide-in-from-top-4 duration-200"
+          className={`mb-6 p-4 rounded-xl border space-y-4 animate-in fade-in slide-in-from-top-4 duration-200 ${
+            theme === "dark" ? "bg-zinc-900/40 border-zinc-800" : "bg-slate-50 border-slate-200"
+          }`}
           id="invoice_form"
         >
           <h3 className="text-xs font-semibold uppercase tracking-wider text-blue-400 font-display flex items-center gap-2">
@@ -391,51 +403,69 @@ export default function InvoiceManager({
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="space-y-1">
-              <label className="text-[10px] uppercase font-mono tracking-wider text-gray-400">Client Organization</label>
+              <label className={`text-[10px] uppercase font-mono tracking-wider ${
+                theme === "dark" ? "text-zinc-400" : "text-slate-500"
+              }`}>Client Organization</label>
               <input 
                 type="text" 
                 value={customerName} 
                 onChange={e => setCustomerName(e.target.value)}
                 placeholder="Client Corp" 
                 required
-                className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                className={`w-full border rounded-lg p-2 text-xs focus:outline-none focus:border-blue-500 ${
+                  theme === "dark" ? "bg-black/40 border-zinc-800 text-white placeholder-zinc-700" : "bg-white border-slate-250 text-slate-800 placeholder-slate-400"
+                }`}
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] uppercase font-mono tracking-wider text-gray-400">Client Email</label>
+              <label className={`text-[10px] uppercase font-mono tracking-wider ${
+                theme === "dark" ? "text-zinc-400" : "text-slate-500"
+              }`}>Client Email</label>
               <input 
                 type="email" 
                 value={customerEmail} 
                 onChange={e => setCustomerEmail(e.target.value)}
                 placeholder="finance@corp.com" 
                 required
-                className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                className={`w-full border rounded-lg p-2 text-xs focus:outline-none focus:border-blue-500 ${
+                  theme === "dark" ? "bg-black/40 border-zinc-800 text-white placeholder-zinc-700" : "bg-white border-slate-250 text-slate-800 placeholder-slate-400"
+                }`}
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] uppercase font-mono tracking-wider text-gray-400">Total Amount (₹)</label>
+              <label className={`text-[10px] uppercase font-mono tracking-wider ${
+                theme === "dark" ? "text-zinc-400" : "text-slate-500"
+              }`}>Total Amount (₹)</label>
               <input 
                 type="number" 
                 value={amount} 
                 onChange={e => setAmount(e.target.value)}
                 placeholder="4500" 
                 required
-                className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                className={`w-full border rounded-lg p-2 text-xs focus:outline-none focus:border-blue-500 ${
+                  theme === "dark" ? "bg-black/40 border-zinc-800 text-white placeholder-zinc-700" : "bg-white border-slate-250 text-slate-800 placeholder-slate-400"
+                }`}
               />
             </div>
             <div className="space-y-1">
-              <label className="text-[10px] uppercase font-mono tracking-wider text-gray-400">Due Date</label>
+              <label className={`text-[10px] uppercase font-mono tracking-wider ${
+                theme === "dark" ? "text-zinc-400" : "text-slate-500"
+              }`}>Due Date</label>
               <input 
                 type="date" 
                 value={dueDate} 
                 onChange={e => setDueDate(e.target.value)}
-                className="w-full bg-black/40 border border-white/10 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-blue-500"
+                className={`w-full border rounded-lg p-2 text-xs focus:outline-none focus:border-blue-500 ${
+                  theme === "dark" ? "bg-black/40 border-zinc-800 text-white" : "bg-white border-slate-250 text-slate-800"
+                }`}
               />
             </div>
           </div>
-          <div className="p-3 bg-blue-500/10 border border-blue-500/20 rounded-xl flex gap-2.5 items-start">
+          <div className={`p-3 rounded-xl border flex gap-2.5 items-start ${
+            theme === "dark" ? "bg-blue-500/10 border-blue-500/20" : "bg-blue-50/50 border-blue-100"
+          }`}>
             <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-            <p className="text-[10px] text-gray-300 leading-normal">
+            <p className={`text-[10px] leading-normal ${theme === "dark" ? "text-gray-300" : "text-slate-600"}`}>
               Publishing this invoice will instantly trigger the <strong>Razorpay Engine</strong> to output a secure Payment Link and map a corresponding high-contrast <strong>Dynamic UPI QR code</strong> for instant GPay/PhonePe settlements.
             </p>
           </div>
@@ -443,7 +473,9 @@ export default function InvoiceManager({
             <button 
               type="button" 
               onClick={() => setIsAdding(false)}
-              className="px-3 py-1.5 rounded-lg text-xs bg-white/5 hover:bg-white/10 text-gray-300"
+              className={`px-3 py-1.5 rounded-lg text-xs ${
+                theme === "dark" ? "bg-white/5 hover:bg-white/10 text-gray-300" : "bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold"
+              }`}
             >
               Cancel
             </button>
@@ -466,11 +498,17 @@ export default function InvoiceManager({
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search by client or Invoice ID..."
-            className="w-full bg-black/30 border border-white/5 hover:border-white/10 rounded-xl pl-9 pr-4 py-2 text-xs text-white focus:outline-none focus:border-blue-500 transition-all"
+            className={`w-full border rounded-xl pl-9 pr-4 py-2 text-xs focus:outline-none focus:border-blue-500 transition-all ${
+              theme === "dark" 
+                ? "bg-black/30 border-zinc-850 text-white placeholder-zinc-600" 
+                : "bg-white border-slate-200 text-slate-800 placeholder-slate-400 shadow-xs"
+            }`}
           />
         </div>
 
-        <div className="flex gap-1 bg-white/5 p-1 rounded-xl border border-white/5 w-full sm:w-auto">
+        <div className={`flex gap-1 p-1 rounded-xl border w-full sm:w-auto ${
+          theme === "dark" ? "bg-white/5 border-white/5" : "bg-slate-100/80 border-slate-200/50"
+        }`}>
           {["all", "paid", "unpaid", "overdue"].map((status) => (
             <button
               key={status}
@@ -478,7 +516,9 @@ export default function InvoiceManager({
               className={`px-3 py-1.5 rounded-lg text-xs uppercase tracking-wider font-mono font-semibold transition-all flex-1 sm:flex-initial ${
                 statusFilter === status 
                   ? "bg-blue-600 text-white shadow" 
-                  : "text-gray-400 hover:text-white"
+                  : theme === "dark"
+                    ? "text-gray-400 hover:text-white"
+                    : "text-slate-500 hover:text-slate-900"
               }`}
             >
               {status}
@@ -488,10 +528,16 @@ export default function InvoiceManager({
       </div>
 
       {/* Invoice list */}
-      <div className="overflow-x-auto rounded-xl border border-white/5">
+      <div className={`overflow-x-auto rounded-xl border ${
+        theme === "dark" ? "border-zinc-800" : "border-slate-200 shadow-xs"
+      }`}>
         <table className="w-full text-left text-xs border-collapse">
           <thead>
-            <tr className="bg-white/5 text-gray-400 uppercase tracking-wider font-mono text-[10px] border-b border-white/5">
+            <tr className={`uppercase tracking-wider font-mono text-[10px] border-b ${
+              theme === "dark"
+                ? "bg-zinc-900/30 text-zinc-400 border-zinc-850"
+                : "bg-slate-50/50 text-slate-500 font-semibold border-slate-150"
+            }`}>
               <th className="p-4 font-semibold">Invoice ID</th>
               <th className="p-4 font-semibold">Client</th>
               <th className="p-4 font-semibold">Date / Due</th>
@@ -500,13 +546,15 @@ export default function InvoiceManager({
               <th className="p-4 font-semibold text-right">Actions / Gateway</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5">
+          <tbody className={`divide-y ${theme === "dark" ? "divide-zinc-850" : "divide-slate-150"}`}>
             {filteredInvoices.length > 0 ? (
               filteredInvoices.map((inv) => (
                 <tr 
                   key={inv.id} 
                   onClick={() => setSelectedInvoice(inv)}
-                  className="hover:bg-white/5 transition-colors cursor-pointer group"
+                  className={`transition-colors cursor-pointer group ${
+                    theme === "dark" ? "hover:bg-zinc-900/30" : "hover:bg-slate-50/60"
+                  }`}
                 >
                   <td className="p-4 font-mono font-semibold text-blue-400 uppercase group-hover:text-blue-300">
                     <span className="flex items-center gap-1.5">
@@ -515,17 +563,17 @@ export default function InvoiceManager({
                     </span>
                   </td>
                   <td className="p-4">
-                    <p className="font-semibold text-white">{inv.customerName}</p>
-                    <p className="text-[10px] text-gray-400">{inv.customerEmail}</p>
+                    <p className={`font-semibold ${theme === "dark" ? "text-white" : "text-slate-850"}`}>{inv.customerName}</p>
+                    <p className={`text-[10px] ${theme === "dark" ? "text-zinc-400" : "text-slate-500"}`}>{inv.customerEmail}</p>
                   </td>
                   <td className="p-4">
-                    <div className="flex items-center gap-1.5 text-gray-300">
+                    <div className={`flex items-center gap-1.5 ${theme === "dark" ? "text-zinc-300" : "text-slate-700"}`}>
                       <Calendar className="w-3.5 h-3.5 text-gray-500" />
                       <span>{inv.date}</span>
                     </div>
-                    <p className="text-[10px] text-rose-400/80 mt-0.5">Due: {inv.dueDate}</p>
+                    <p className={`text-[10px] mt-0.5 ${theme === "dark" ? "text-rose-400/80" : "text-rose-600 font-semibold"}`}>Due: {inv.dueDate}</p>
                   </td>
-                  <td className="p-4 font-mono font-bold text-white text-sm">
+                  <td className={`p-4 font-mono font-bold text-sm ${theme === "dark" ? "text-white" : "text-slate-900"}`}>
                     ₹{inv.amount.toLocaleString('en-IN')}
                   </td>
                   <td className="p-4">
@@ -541,7 +589,11 @@ export default function InvoiceManager({
                       <select 
                         value={inv.status}
                         onChange={(e) => onUpdateInvoiceStatus(inv.id, e.target.value as any)}
-                        className="bg-black/60 border border-white/10 text-gray-300 rounded p-1 text-[11px] hover:border-white/20 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        className={`border rounded p-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                          theme === "dark"
+                            ? "bg-zinc-900 border-zinc-800 text-zinc-300 hover:border-zinc-700"
+                            : "bg-white border-slate-250 text-slate-700 hover:border-slate-300"
+                        }`}
                       >
                         <option value="paid">Paid</option>
                         <option value="unpaid">Unpaid</option>
@@ -589,20 +641,28 @@ export default function InvoiceManager({
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 26, stiffness: 220 }}
-              className="fixed top-0 bottom-0 right-0 w-full sm:w-[480px] bg-[#0c0e1e] border-l border-white/10 z-50 flex flex-col shadow-2xl h-full overflow-hidden text-gray-200"
+              className={`fixed top-0 bottom-0 right-0 w-full sm:w-[480px] border-l z-50 flex flex-col shadow-2xl h-full overflow-hidden ${
+                theme === "dark" ? "bg-[#0c0e1e] border-zinc-800 text-gray-200" : "bg-white border-slate-200 text-slate-800"
+              }`}
             >
               {/* Header */}
-              <div className="p-5 border-b border-white/10 flex items-center justify-between bg-[#11142B]">
+              <div className={`p-5 border-b flex items-center justify-between ${
+                theme === "dark" ? "border-zinc-800 bg-[#11142B]" : "border-slate-150 bg-slate-50"
+              }`}>
                 <div className="flex items-center gap-2">
                   <FileText className="w-5 h-5 text-blue-400" />
                   <div>
-                    <h3 className="font-bold text-sm text-white">Invoice Gateway Manager</h3>
-                    <p className="text-[10px] font-mono text-gray-400">#{selectedInvoice.invoiceNumber}</p>
+                    <h3 className={`font-bold text-sm ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Invoice Gateway Manager</h3>
+                    <p className={`text-[10px] font-mono ${theme === "dark" ? "text-zinc-400" : "text-slate-500"}`}>#{selectedInvoice.invoiceNumber}</p>
                   </div>
                 </div>
                 <button 
                   onClick={() => setSelectedInvoice(null)}
-                  className="p-1.5 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-all"
+                  className={`p-1.5 rounded-lg transition-all ${
+                    theme === "dark" 
+                      ? "text-zinc-400 hover:text-white bg-white/5 hover:bg-white/10" 
+                      : "text-slate-500 hover:text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-200/50"
+                  }`}
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -612,9 +672,13 @@ export default function InvoiceManager({
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 
                 {/* Meta details cards */}
-                <div className="bg-white/5 border border-white/5 rounded-2xl p-4.5 space-y-3.5">
-                  <div className="flex items-center justify-between border-b border-white/5 pb-2.5">
-                    <span className="text-[11px] font-mono uppercase text-gray-400">Payment Status</span>
+                <div className={`border rounded-2xl p-4.5 space-y-3.5 ${
+                  theme === "dark" ? "bg-white/5 border-white/5" : "bg-slate-50 border-slate-200 shadow-xs"
+                }`}>
+                  <div className={`flex items-center justify-between border-b pb-2.5 ${
+                    theme === "dark" ? "border-zinc-800/60" : "border-slate-200/60"
+                  }`}>
+                    <span className={`text-[11px] font-mono uppercase ${theme === "dark" ? "text-zinc-400" : "text-slate-550"}`}>Payment Status</span>
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${getStatusBadgeClass(selectedInvoice.status)}`}>
                       {getStatusIcon(selectedInvoice.status)}
                       {selectedInvoice.status}
@@ -623,20 +687,20 @@ export default function InvoiceManager({
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <p className="text-[10px] uppercase font-mono text-gray-500">Customer Name</p>
-                      <p className="text-xs font-bold text-white mt-0.5">{selectedInvoice.customerName}</p>
+                      <p className={`text-[10px] uppercase font-mono ${theme === "dark" ? "text-zinc-500" : "text-slate-400"}`}>Customer Name</p>
+                      <p className={`text-xs font-bold mt-0.5 ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{selectedInvoice.customerName}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase font-mono text-gray-500">Customer Email</p>
-                      <p className="text-xs font-medium text-gray-300 mt-0.5 truncate">{selectedInvoice.customerEmail}</p>
+                      <p className={`text-[10px] uppercase font-mono ${theme === "dark" ? "text-zinc-500" : "text-slate-400"}`}>Customer Email</p>
+                      <p className={`text-xs font-medium mt-0.5 truncate ${theme === "dark" ? "text-zinc-300" : "text-slate-700"}`}>{selectedInvoice.customerEmail}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase font-mono text-gray-500">Issue Date</p>
-                      <p className="text-xs font-semibold text-gray-300 mt-0.5">{selectedInvoice.date}</p>
+                      <p className={`text-[10px] uppercase font-mono ${theme === "dark" ? "text-zinc-500" : "text-slate-400"}`}>Issue Date</p>
+                      <p className={`text-xs font-semibold mt-0.5 ${theme === "dark" ? "text-zinc-300" : "text-slate-700"}`}>{selectedInvoice.date}</p>
                     </div>
                     <div>
-                      <p className="text-[10px] uppercase font-mono text-gray-500">Due Date</p>
-                      <p className="text-xs font-semibold text-rose-400 mt-0.5">{selectedInvoice.dueDate}</p>
+                      <p className={`text-[10px] uppercase font-mono ${theme === "dark" ? "text-zinc-500" : "text-slate-400"}`}>Due Date</p>
+                      <p className="text-xs font-semibold text-rose-500 mt-0.5">{selectedInvoice.dueDate}</p>
                     </div>
                   </div>
                 </div>
@@ -644,24 +708,30 @@ export default function InvoiceManager({
                 {/* Big Amount Panel */}
                 <div className="bg-gradient-to-br from-blue-600/20 to-indigo-600/10 border border-blue-500/20 rounded-2xl p-5 text-center relative overflow-hidden">
                   <div className="absolute top-1 right-2 p-1 text-[8px] font-mono bg-blue-500/10 border border-blue-500/25 rounded text-blue-400">INR</div>
-                  <p className="text-xs text-gray-400 font-semibold mb-1">Invoice Payable Value</p>
-                  <p className="text-3xl font-extrabold font-display text-white tracking-tight">
+                  <p className={`text-xs font-semibold mb-1 ${theme === "dark" ? "text-zinc-400" : "text-slate-500"}`}>Invoice Payable Value</p>
+                  <p className={`text-3xl font-extrabold font-display tracking-tight ${theme === "dark" ? "text-white" : "text-slate-900"}`}>
                     ₹{selectedInvoice.amount.toLocaleString('en-IN')}
                   </p>
                 </div>
 
                 {/* QR Code Container Block */}
                 {selectedInvoice.status !== "paid" && (
-                  <div className="bg-[#080914] border border-white/10 rounded-2xl p-5 flex flex-col items-center">
+                  <div className={`border rounded-2xl p-5 flex flex-col items-center ${
+                    theme === "dark" ? "bg-[#080914] border-zinc-850" : "bg-slate-50 border-slate-200"
+                  }`}>
                     
                     {/* QR Type Selector Switcher Tabs */}
-                    <div className="flex gap-1 bg-white/5 border border-white/5 p-1 rounded-xl mb-4 w-full">
+                    <div className={`flex gap-1 border p-1 rounded-xl mb-4 w-full ${
+                      theme === "dark" ? "bg-white/5 border-white/5" : "bg-slate-200/50 border-slate-300/40"
+                    }`}>
                       <button
                         onClick={() => setQrType("razorpay")}
                         className={`flex-1 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider transition-all ${
                           qrType === "razorpay" 
                             ? "bg-blue-600 text-white shadow-md shadow-blue-500/10" 
-                            : "text-gray-400 hover:text-white"
+                            : theme === "dark"
+                              ? "text-gray-400 hover:text-white"
+                              : "text-slate-500 hover:text-slate-900"
                         }`}
                       >
                         Razorpay Secure QR
@@ -671,7 +741,9 @@ export default function InvoiceManager({
                         className={`flex-1 py-1.5 rounded-lg text-[10px] font-mono font-bold uppercase tracking-wider transition-all ${
                           qrType === "upi" 
                             ? "bg-blue-600 text-white shadow-md shadow-blue-500/10" 
-                            : "text-gray-400 hover:text-white"
+                            : theme === "dark"
+                              ? "text-gray-400 hover:text-white"
+                              : "text-slate-500 hover:text-slate-900"
                         }`}
                       >
                         Direct UPI QR
@@ -694,44 +766,48 @@ export default function InvoiceManager({
                     {/* QR Details */}
                     <div className="text-center space-y-1 mt-1 mb-3">
                       <p className="text-[10px] uppercase font-mono font-bold tracking-widest text-blue-400">Scan using any UPI App</p>
-                      <p className="text-[9px] text-gray-500">Google Pay • PhonePe • Paytm • BHIM • WhatsApp UPI</p>
+                      <p className={`text-[9px] ${theme === "dark" ? "text-gray-500" : "text-slate-500"}`}>Google Pay • PhonePe • Paytm • BHIM • WhatsApp UPI</p>
                     </div>
                   </div>
                 )}
 
                 {/* Successful Payment Metrics and Receipt Details */}
                 {selectedInvoice.status === "paid" && (
-                  <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-2xl p-5 space-y-3.5">
-                    <div className="flex items-center gap-2 text-emerald-400">
+                  <div className={`border rounded-2xl p-5 space-y-3.5 ${
+                    theme === "dark" ? "bg-emerald-500/5 border-emerald-500/20" : "bg-emerald-50/50 border-emerald-200"
+                  }`}>
+                    <div className="flex items-center gap-2 text-emerald-500">
                       <CheckCircle2 className="w-5 h-5 shrink-0" />
                       <div>
-                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">Automated Settlement Lock</h4>
-                        <p className="text-[10px] text-gray-400">Transaction verified via active Webhooks</p>
+                        <h4 className={`text-xs font-bold uppercase tracking-wider ${theme === "dark" ? "text-white" : "text-slate-800"}`}>Automated Settlement Lock</h4>
+                        <p className={`text-[10px] ${theme === "dark" ? "text-zinc-400" : "text-slate-500"}`}>Transaction verified via active Webhooks</p>
                       </div>
                     </div>
                     
-                    <div className="grid grid-cols-2 gap-3.5 text-xs border-t border-white/5 pt-3.5">
+                    <div className={`grid grid-cols-2 gap-3.5 text-xs border-t pt-3.5 ${
+                      theme === "dark" ? "border-zinc-800/60" : "border-slate-100"
+                    }`}>
                       <div>
-                        <span className="text-[10px] text-gray-500 font-mono uppercase block">Razorpay Order ID</span>
-                        <span className="font-mono font-bold text-gray-300 mt-0.5 block truncate" title={selectedInvoice.razorpayOrderId}>
+                        <span className="text-[10px] text-gray-400 font-mono uppercase block">Razorpay Order ID</span>
+                        <span className={`font-mono font-bold mt-0.5 block truncate ${theme === "dark" ? "text-zinc-300" : "text-slate-700"}`} title={selectedInvoice.razorpayOrderId}>
                           {selectedInvoice.razorpayOrderId || "order_capt_sim_1"}
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-gray-500 font-mono uppercase block">Razorpay Payment ID</span>
-                        <span className="font-mono font-bold text-gray-300 mt-0.5 block truncate" title={selectedInvoice.razorpayPaymentId}>
+                        <span className="text-[10px] text-gray-400 font-mono uppercase block">Razorpay Payment ID</span>
+                        <span className={`font-mono font-bold mt-0.5 block truncate ${theme === "dark" ? "text-zinc-300" : "text-slate-700"}`} title={selectedInvoice.razorpayPaymentId}>
                           {selectedInvoice.razorpayPaymentId || "pay_capt_sim_1"}
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-gray-500 font-mono uppercase block">Transaction Time</span>
-                        <span className="font-medium text-gray-300 mt-0.5 block">
+                        <span className="text-[10px] text-gray-400 font-mono uppercase block">Transaction Time</span>
+                        <span className={`font-medium mt-0.5 block ${theme === "dark" ? "text-zinc-300" : "text-slate-700"}`}>
                           {selectedInvoice.paymentTime ? new Date(selectedInvoice.paymentTime).toLocaleTimeString() : new Date().toLocaleTimeString()}
                         </span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-gray-500 font-mono uppercase block">Payment Method</span>
-                        <span className="font-bold text-emerald-400 mt-0.5 block">
+                        <span className="text-[10px] text-gray-400 font-mono uppercase block">Payment Method</span>
+                        <span className="font-bold text-emerald-600 mt-0.5 block">
                           {selectedInvoice.paymentMethod || "UPI Intent App"}
                         </span>
                       </div>

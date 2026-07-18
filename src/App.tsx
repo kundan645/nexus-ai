@@ -19,7 +19,8 @@ import {
   X,
   Sun,
   Moon,
-  Laptop
+  Laptop,
+  ClipboardList
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -35,27 +36,34 @@ import CopilotRag from "./components/CopilotRag";
 import CustomerManager from "./components/CustomerManager";
 import DocumentManager from "./components/DocumentManager";
 import CustomerPaymentPortal from "./components/CustomerPaymentPortal";
+import DailyLedger from "./components/DailyLedger";
+import LoginScreen from "./components/LoginScreen";
+import SettingsPanel from "./components/SettingsPanel";
+import { getSupabaseClient, isSupabaseConfigured } from "./lib/supabase";
 
 export default function App() {
+  const [currentUser, setCurrentUser] = useState<{ email: string; name: string; isSimulated: boolean } | null>({
+    email: "admin@nova.ai",
+    name: "Administrator",
+    isSimulated: true
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    "dashboard" | "copilot" | "documents" | "customers" | "payments" | "inventory" | "voice"
+    "dashboard" | "copilot" | "documents" | "customers" | "payments" | "inventory" | "voice" | "ledger" | "settings"
   >("dashboard");
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [activeOrgId, setActiveOrgId] = useState<string>("org-nexus");
   const [currentOrg, setCurrentOrg] = useState<Organization | null>(null);
 
-  // Theme states supporting Light & Dark Mode
-  const [theme, setTheme] = useState<"light" | "dark">(() => {
-    return (localStorage.getItem("nexus-theme") as "light" | "dark") || "dark";
-  });
+  // Theme state: permanently set to dark mode
+  const theme = "dark";
 
   useEffect(() => {
     const root = window.document.documentElement;
     root.classList.remove("light", "dark");
-    root.classList.add(theme);
-    localStorage.setItem("nexus-theme", theme);
-  }, [theme]);
+    root.classList.add("dark");
+    localStorage.setItem("nexus-theme", "dark");
+  }, []);
 
   // Tenant-isolated states
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -69,7 +77,7 @@ export default function App() {
     {
       id: "welcome",
       sender: "assistant",
-      text: "Hello! I am NovaOS, your unified business co-pilot. I have full knowledge of your SLA, product lines, inventory levels, outstanding customer invoices, and outbound voice campaigns. Ask me anything, or upload custom terms/guidelines in the Knowledge Vault!",
+      text: "Hello! I am NovaOS, your unified business co-pilot. I have full knowledge of your SLA, product lines, inventory levels, outstanding customer invoices, and outbound voice campaigns. Ask me anything!",
       timestamp: new Date().toLocaleTimeString(),
     }
   ]);
@@ -368,7 +376,7 @@ export default function App() {
   };
 
   // Chat message sending
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, language: string = "English") => {
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
       sender: "user",
@@ -385,6 +393,7 @@ export default function App() {
         body: JSON.stringify({
           message: text,
           chatHistory: chatHistory,
+          language,
         }),
       });
       if (res.ok) {
@@ -441,6 +450,16 @@ export default function App() {
     } catch (err) {
       console.error(err);
     }
+  };
+
+  const handleSignOut = async () => {
+    // Authentication is bypassed as requested by the user.
+    // We keep the user logged in as Administrator.
+    setCurrentUser({
+      email: "admin@nova.ai",
+      name: "Administrator",
+      isSimulated: true
+    });
   };
 
   // Check if we are on the secure customer-facing payment checkout page
@@ -552,14 +571,16 @@ export default function App() {
                 
                 {/* GROUP 1 */}
                 <div className="space-y-1">
-                  <p className="text-[9px] uppercase font-bold tracking-widest text-slate-400 dark:text-zinc-500 px-3 mb-2">Core Insights</p>
+                  <p className={`text-[9px] uppercase font-bold tracking-widest px-3 mb-2 ${
+                    theme === "dark" ? "text-zinc-500" : "text-slate-500"
+                  }`}>Core Insights</p>
                   
                   <button 
                     onClick={() => { setActiveTab("dashboard"); setMobileMenuOpen(false); }}
                     className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                       activeTab === "dashboard" 
                         ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                        : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                        : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                     }`}
                   >
                     <LayoutDashboard className="w-4 h-4" />
@@ -571,11 +592,11 @@ export default function App() {
                     className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                       activeTab === "copilot" 
                         ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                        : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                        : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                     }`}
                   >
                     <Bot className="w-4 h-4" />
-                    <span>AI Chat</span>
+                    <span>AI Assistant</span>
                   </button>
 
                   <button 
@@ -583,24 +604,38 @@ export default function App() {
                     className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                       activeTab === "documents" 
                         ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                        : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                        : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                     }`}
                   >
                     <FolderOpen className="w-4 h-4" />
                     <span>Documents</span>
                   </button>
+
+                  <button 
+                    onClick={() => { setActiveTab("ledger"); setMobileMenuOpen(false); }}
+                    className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
+                      activeTab === "ledger" 
+                        ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
+                        : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
+                    }`}
+                  >
+                    <ClipboardList className="w-4 h-4" />
+                    <span>Daily Ledger</span>
+                  </button>
                 </div>
 
                 {/* GROUP 2 */}
                 <div className="space-y-1">
-                  <p className="text-[9px] uppercase font-bold tracking-widest text-slate-400 dark:text-zinc-500 px-3 mb-2">Business Engines</p>
+                  <p className={`text-[9px] uppercase font-bold tracking-widest px-3 mb-2 ${
+                    theme === "dark" ? "text-zinc-500" : "text-slate-500"
+                  }`}>Business Engines</p>
 
                   <button 
                     onClick={() => { setActiveTab("customers"); setMobileMenuOpen(false); }}
                     className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                       activeTab === "customers" 
                         ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                        : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                        : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                     }`}
                   >
                     <Users className="w-4 h-4" />
@@ -612,7 +647,7 @@ export default function App() {
                     className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                       activeTab === "payments" 
                         ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                        : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                        : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                     }`}
                   >
                     <CreditCard className="w-4 h-4" />
@@ -624,7 +659,7 @@ export default function App() {
                     className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                       activeTab === "inventory" 
                         ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                        : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                        : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                     }`}
                   >
                     <Package className="w-4 h-4" />
@@ -634,64 +669,56 @@ export default function App() {
 
                 {/* GROUP 3 */}
                 <div className="space-y-1">
-                  <p className="text-[9px] uppercase font-bold tracking-widest text-slate-400 dark:text-zinc-500 px-3 mb-2">Tools</p>
+                  <p className={`text-[9px] uppercase font-bold tracking-widest px-3 mb-2 ${
+                    theme === "dark" ? "text-zinc-500" : "text-slate-500"
+                  }`}>Tools</p>
 
                   <button 
                     onClick={() => { setActiveTab("voice"); setMobileMenuOpen(false); }}
                     className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                       activeTab === "voice" 
                         ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                        : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                        : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                     }`}
                   >
                     <PhoneCall className="w-4 h-4" />
-                    <span>Voice Agent</span>
+                    <span>AI Calling Agent</span>
+                  </button>
+
+                  <button 
+                    onClick={() => { setActiveTab("settings"); setMobileMenuOpen(false); }}
+                    className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
+                      activeTab === "settings" 
+                        ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
+                        : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
+                    }`}
+                  >
+                    <Settings className="w-4 h-4" />
+                    <span>Settings</span>
                   </button>
                 </div>
 
               </div>
             </div>
 
-            {/* Bottom Theme Control */}
-            <div className={`p-4 border-t ${theme === "dark" ? "border-zinc-800 bg-[#090a0d]" : "border-slate-200 bg-slate-50"}`}>
-              <div className={`flex items-center justify-between p-1 rounded-lg ${theme === "dark" ? "bg-zinc-900" : "bg-slate-200/70"}`}>
-                <button 
-                  onClick={() => setTheme("light")}
-                  className={`flex items-center justify-center gap-1 flex-1 py-1 rounded-md text-[11px] font-semibold transition-all ${
-                    theme === "light" ? "bg-white text-slate-950 shadow-xs" : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white"
-                  }`}
-                >
-                  <Sun className="w-3.5 h-3.5" />
-                  Light
-                </button>
-                <button 
-                  onClick={() => setTheme("dark")}
-                  className={`flex items-center justify-center gap-1 flex-1 py-1 rounded-md text-[11px] font-semibold transition-all ${
-                    theme === "dark" ? "bg-zinc-800 text-white shadow-xs" : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white"
-                  }`}
-                >
-                  <Moon className="w-3.5 h-3.5" />
-                  Dark
-                </button>
-              </div>
-            </div>
+            {/* Theme permanently configured as dark */}
 
             {/* Mobile Profile Footer */}
             <div className={`p-4 border-t flex items-center justify-between gap-3 shrink-0 ${
               theme === "dark" ? "border-zinc-800 bg-[#06070a]" : "border-slate-200 bg-slate-100"
             }`}>
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-xs font-bold text-white">
-                  AS
+                <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-xs font-bold text-white uppercase">
+                  {(currentUser?.name || "User").split(" ").map(w => w[0]).join("").substring(0,2)}
                 </div>
                 <div>
-                  <p className={`text-xs font-bold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Amit Sharma</p>
-                  <p className="text-[10px] text-slate-500 dark:text-zinc-400">Admin</p>
+                  <p className={`text-xs font-bold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{currentUser?.name}</p>
+                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate max-w-[120px]">{currentUser?.email}</p>
                 </div>
               </div>
               <button 
                 title="Sign out"
-                onClick={() => alert("NovaOS Core session termination triggered.")}
+                onClick={handleSignOut}
                 className={`p-1.5 rounded-lg transition-colors ${
                   theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-500 hover:text-black hover:bg-slate-200"
                 }`}
@@ -763,14 +790,16 @@ export default function App() {
             
             {/* GROUP 1 */}
             <div className="space-y-1">
-              <p className="text-[9px] uppercase font-bold tracking-widest text-slate-400 dark:text-zinc-500 px-3 mb-2">Core Insights</p>
+              <p className={`text-[9px] uppercase font-bold tracking-widest px-3 mb-2 ${
+                theme === "dark" ? "text-zinc-500" : "text-slate-500"
+              }`}>Core Insights</p>
               
               <button 
                 onClick={() => setActiveTab("dashboard")}
                 className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                   activeTab === "dashboard" 
                     ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                    : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                    : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                 }`}
               >
                 <LayoutDashboard className="w-4 h-4" />
@@ -782,11 +811,11 @@ export default function App() {
                 className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                   activeTab === "copilot" 
                     ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                    : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                    : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                 }`}
               >
                 <Bot className="w-4 h-4" />
-                <span>AI Chat</span>
+                <span>AI Assistant</span>
               </button>
 
               <button 
@@ -794,24 +823,38 @@ export default function App() {
                 className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                   activeTab === "documents" 
                     ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                    : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                    : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                 }`}
               >
                 <FolderOpen className="w-4 h-4" />
                 <span>Documents</span>
               </button>
+
+              <button 
+                onClick={() => setActiveTab("ledger")}
+                className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
+                  activeTab === "ledger" 
+                    ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
+                    : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
+                }`}
+              >
+                <ClipboardList className="w-4 h-4" />
+                <span>Daily Ledger</span>
+              </button>
             </div>
 
             {/* GROUP 2 */}
             <div className="space-y-1">
-              <p className="text-[9px] uppercase font-bold tracking-widest text-slate-400 dark:text-zinc-500 px-3 mb-2">Business Engines</p>
+              <p className={`text-[9px] uppercase font-bold tracking-widest px-3 mb-2 ${
+                theme === "dark" ? "text-zinc-500" : "text-slate-500"
+              }`}>Business Engines</p>
 
               <button 
                 onClick={() => setActiveTab("customers")}
                 className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                   activeTab === "customers" 
                     ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                    : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                    : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                 }`}
               >
                 <Users className="w-4 h-4" />
@@ -823,7 +866,7 @@ export default function App() {
                 className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                   activeTab === "payments" 
                     ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                    : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                    : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                 }`}
               >
                 <CreditCard className="w-4 h-4" />
@@ -835,7 +878,7 @@ export default function App() {
                 className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                   activeTab === "inventory" 
                     ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                    : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                    : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                 }`}
               >
                 <Package className="w-4 h-4" />
@@ -845,67 +888,59 @@ export default function App() {
 
             {/* GROUP 3 */}
             <div className="space-y-1">
-              <p className="text-[9px] uppercase font-bold tracking-widest text-slate-400 dark:text-zinc-500 px-3 mb-2">Tools</p>
+              <p className={`text-[9px] uppercase font-bold tracking-widest px-3 mb-2 ${
+                theme === "dark" ? "text-zinc-500" : "text-slate-500"
+              }`}>Tools</p>
 
               <button 
                 onClick={() => setActiveTab("voice")}
                 className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
                   activeTab === "voice" 
                     ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
-                    : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
+                    : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
                 }`}
               >
                 <PhoneCall className="w-4 h-4" />
-                <span>Voice Agent</span>
+                <span>AI Calling Agent</span>
+              </button>
+
+              <button 
+                onClick={() => setActiveTab("settings")}
+                className={`flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg transition-all text-xs font-medium ${
+                  activeTab === "settings" 
+                    ? (theme === "dark" ? "bg-white/10 text-white font-semibold" : "bg-slate-200/75 text-slate-900 font-semibold")
+                    : (theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-600 hover:text-black hover:bg-slate-100")
+                }`}
+              >
+                <Settings className="w-4 h-4" />
+                <span>Settings</span>
               </button>
             </div>
 
           </div>
         </div>
 
-        {/* Bottom Theme Control */}
-        <div className={`p-4 border-t ${theme === "dark" ? "border-zinc-800 bg-[#06070a]" : "border-slate-200 bg-slate-50"}`}>
-          <div className={`flex items-center justify-between p-1 rounded-lg ${theme === "dark" ? "bg-zinc-900" : "bg-slate-200/70"}`}>
-            <button 
-              onClick={() => setTheme("light")}
-              className={`flex items-center justify-center gap-1 flex-1 py-1 rounded-md text-[11px] font-semibold transition-all ${
-                theme === "light" ? "bg-white text-slate-950 shadow-xs" : "text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white"
-              }`}
-            >
-              <Sun className="w-3.5 h-3.5" />
-              Light
-            </button>
-            <button 
-              onClick={() => setTheme("dark")}
-              className={`flex items-center justify-center gap-1 flex-1 py-1 rounded-md text-[11px] font-semibold transition-all ${
-                theme === "dark" ? "bg-zinc-800 text-white shadow-xs" : "text-slate-500 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white"
-              }`}
-            >
-              <Moon className="w-3.5 h-3.5" />
-              Dark
-            </button>
-          </div>
-        </div>
+        {/* Theme permanently configured as dark */}
 
-        {/* Sidebar Footer: Profile Widget (Amit Sharma Admin AS) */}
+        {/* Sidebar Footer: Profile Widget (Dynamic Logged In User) */}
         <div className={`p-4 border-t flex items-center justify-between gap-3 shrink-0 ${
           theme === "dark" ? "border-zinc-800 bg-[#06070a]" : "border-slate-200 bg-slate-50"
         }`}>
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-xs font-bold text-white shadow-xs">
-              AS
+            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center text-xs font-bold text-white shadow-xs uppercase">
+              {(currentUser?.name || "User").split(" ").map(w => w[0]).join("").substring(0,2)}
             </div>
             <div>
-              <p className={`text-xs font-bold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Amit Sharma</p>
-              <p className="text-[10px] text-slate-500 dark:text-zinc-400">Admin</p>
+              <p className={`text-xs font-bold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>{currentUser?.name}</p>
+              <p className="text-[10px] text-zinc-500 dark:text-zinc-400 truncate max-w-[120px]">{currentUser?.email}</p>
             </div>
           </div>
           <button 
-            title="Disconnect Connection"
+            title="Sign out"
             className={`p-1.5 rounded-lg transition-all ${
               theme === "dark" ? "text-zinc-400 hover:text-white hover:bg-white/5" : "text-slate-500 hover:text-black hover:bg-slate-200"
             }`}
-            onClick={() => alert("NovaOS Core session termination triggered.")}
+            onClick={handleSignOut}
           >
             <LogOut className="w-4 h-4" />
           </button>
@@ -975,10 +1010,15 @@ export default function App() {
               <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 bg-rose-500 rounded-full animate-ping"></span>
             </button>
 
-            {/* Settings Icon */}
-            <button className={`hidden sm:block p-2 border rounded-xl transition-all ${
-              theme === "dark" ? "bg-zinc-900 border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white" : "bg-white border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-black"
-            }`}>
+             {/* Settings Icon */}
+            <button 
+              onClick={() => setActiveTab("settings")}
+              className={`hidden sm:block p-2 border rounded-xl transition-all ${
+                activeTab === "settings"
+                  ? "bg-blue-600 border-blue-500 text-white"
+                  : theme === "dark" ? "bg-zinc-900 border-zinc-800 hover:bg-zinc-800 text-zinc-400 hover:text-white" : "bg-white border-slate-200 hover:bg-slate-50 text-slate-600 hover:text-black"
+              }`}
+            >
               <Settings className="w-4 h-4" />
             </button>
 
@@ -994,7 +1034,7 @@ export default function App() {
               <h1 className={`text-2xl sm:text-3xl font-extrabold tracking-tight flex items-center gap-2 ${
                 theme === "dark" ? "text-white" : "text-slate-900"
               }`}>
-                Good Morning, Amit! <span className="animate-bounce">👋</span>
+                Good Morning, {(currentUser?.name || "User").split(" ")[0]}! <span className="animate-bounce">👋</span>
               </h1>
               <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">
                 Here's what's happening with <span className="text-blue-500 dark:text-blue-400 font-semibold">{currentOrg?.name || "Sharma Electronics"}</span> today.
@@ -1019,6 +1059,7 @@ export default function App() {
                     inventory={inventory}
                     invoices={invoices}
                     onTriggerHealthTune={handleTriggerHealthTune}
+                    onRefreshData={fetchTenantData}
                     theme={theme}
                   />
                 )}
@@ -1030,6 +1071,7 @@ export default function App() {
                     onUploadFile={handleUploadFile}
                     onSendMessage={handleSendMessage}
                     isLoading={isLoadingChat}
+                    theme={theme}
                   />
                 )}
 
@@ -1038,6 +1080,15 @@ export default function App() {
                     documents={documents}
                     onUploadFile={handleUploadFile}
                     onDeleteDocument={handleDeleteDocument}
+                    theme={theme}
+                    onSwitchToLedger={() => setActiveTab("ledger")}
+                  />
+                )}
+
+                {activeTab === "ledger" && (
+                  <DailyLedger 
+                    theme={theme}
+                    activeOrgId={activeOrgId}
                   />
                 )}
 
@@ -1045,6 +1096,7 @@ export default function App() {
                   <CustomerManager 
                     customers={customers}
                     onAddCustomer={handleAddCustomer}
+                    theme={theme}
                   />
                 )}
 
@@ -1054,6 +1106,7 @@ export default function App() {
                     onAddInvoice={handleAddInvoice}
                     onUpdateInvoiceStatus={handleUpdateInvoiceStatus}
                     onTriggerStripeLink={handleTriggerStripeLink}
+                    theme={theme}
                   />
                 )}
 
@@ -1073,6 +1126,16 @@ export default function App() {
                     callLogs={callLogs}
                     onTriggerCall={handleTriggerCall}
                     isLoading={isRefreshing}
+                    theme={theme}
+                  />
+                )}
+
+                {activeTab === "settings" && (
+                  <SettingsPanel 
+                    theme={theme}
+                    currentUser={currentUser}
+                    onUpdateUser={setCurrentUser}
+                    activeOrgId={activeOrgId}
                   />
                 )}
               </motion.div>

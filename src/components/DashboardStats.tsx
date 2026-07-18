@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -20,7 +20,16 @@ import {
   CheckCircle2,
   XCircle,
   HelpCircle,
-  Info
+  Info,
+  Send,
+  MessageSquare,
+  Bot,
+  ArrowLeft,
+  Mic,
+  Volume2,
+  Globe,
+  Settings2,
+  Check
 } from "lucide-react";
 import { 
   AreaChart, 
@@ -35,10 +44,11 @@ import {
 import { Organization, InventoryItem, Invoice } from "../types";
 
 interface DashboardStatsProps {
-  currentOrg: Organization;
-  inventory: InventoryItem[];
-  invoices: Invoice[];
+  currentOrg: any;
+  inventory: any[];
+  invoices: any[];
   onTriggerHealthTune: () => void;
+  onRefreshData?: () => void;
   theme?: "light" | "dark";
 }
 
@@ -47,11 +57,461 @@ export default function DashboardStats({
   inventory, 
   invoices,
   onTriggerHealthTune,
+  onRefreshData,
   theme = "dark"
 }: DashboardStatsProps) {
   
   const [activeSubTab, setActiveSubTab] = useState<"business" | "speed_insights">("business");
   const [chartView, setChartView] = useState<"revenue" | "profit" | "expenses">("revenue");
+
+  // Out of stock tracking & local simulation state
+  const [reorderedItems, setReorderedItems] = useState<Record<string, boolean>>({});
+  const [localStockOverrides, setLocalStockOverrides] = useState<Record<string, number>>({});
+  const [restockingId, setRestockingId] = useState<string | null>(null);
+
+  const handleReorder = (itemId: string, name: string) => {
+    setRestockingId(itemId);
+    setTimeout(() => {
+      setLocalStockOverrides(prev => ({
+        ...prev,
+        [itemId]: 40
+      }));
+      setReorderedItems(prev => ({
+        ...prev,
+        [itemId]: true
+      }));
+      setRestockingId(null);
+    }, 1200);
+  };
+
+  // Compute actual stock levels reflecting any local quick restocks
+  const lowStockProducts = (inventory || []).map(item => ({
+    ...item,
+    stock: localStockOverrides[item.id] !== undefined ? localStockOverrides[item.id] : item.stock
+  })).filter(item => item.stock <= (item.minStock || 15));
+
+  // --- NOVA OS VOICE HUB STATES & REF INTEGRATION ---
+  const [voiceActive, setVoiceActive] = useState(false);
+  const [interactiveLang, setInteractiveLang] = useState("hi-IN");
+  const [isInteractiveListening, setIsInteractiveListening] = useState(false);
+  const [interactiveTranscript, setInteractiveTranscript] = useState<Array<{ role: "user" | "assistant"; text: string; date: string }>>([
+    {
+      role: "assistant",
+      text: "Hello! I am your Nova AI Voice Agent. Select your preferred language, click on the microphone orb, and start speaking to me! I will talk back to you in the same language.",
+      date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }
+  ]);
+  const [isAiProcessing, setIsAiProcessing] = useState(false);
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
+  const [currentRecognitionText, setCurrentRecognitionText] = useState("");
+  const [voicePersona, setVoicePersona] = useState<"female" | "male">("female");
+  const [voicePitch, setVoicePitch] = useState<number>(1.0);
+  const [voiceRate, setVoiceRate] = useState<number>(0.95);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoiceName, setSelectedVoiceName] = useState("");
+
+  const recognitionInstanceRef = useRef<any>(null);
+  const interactiveSpeechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const recognitionTranscriptRef = useRef<string>("");
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const INTERACTIVE_LANGUAGES = [
+    { code: "hi-IN", name: "Hindi (हिंदी)", native: "हिंदी", flag: "🇮🇳" },
+    { code: "en-US", name: "English (US)", native: "English", flag: "🇺🇸" },
+    { code: "mr-IN", name: "Marathi (मराठी)", native: "मराठी", flag: "🇮🇳" },
+    { code: "es-ES", name: "Spanish (Español)", native: "Español", flag: "🇪🇸" },
+    { code: "fr-FR", name: "French (Français)", native: "Français", flag: "🇫🇷" },
+    { code: "de-DE", name: "German (Deutsch)", native: "Deutsch", flag: "🇩🇪" },
+    { code: "ja-JP", name: "Japanese (日本語)", native: "日本語", flag: "🇯🇵" },
+    { code: "zh-CN", name: "Chinese (简体中文)", native: "简体中文", flag: "🇨🇳" },
+    { code: "ar-SA", name: "Arabic (العربية)", native: "العربية", flag: "🇸🇦" },
+    { code: "pt-BR", name: "Portuguese (Português)", native: "Português", flag: "🇧🇷" },
+    { code: "bn-IN", name: "Bengali (বাংলা)", native: "বাংলা", flag: "🇮🇳" },
+    { code: "ta-IN", name: "Tamil (தமிழ்)", native: "தமிழ்", flag: "🇮🇳" },
+    { code: "te-IN", name: "Telugu (తెలుగు)", native: "తెలుగు", flag: "🇮🇳" }
+  ];
+
+  // Load browser voices
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      const loadVoices = () => {
+        const voices = window.speechSynthesis.getVoices();
+        setAvailableVoices(voices);
+      };
+      loadVoices();
+      window.speechSynthesis.onvoiceschanged = loadVoices;
+    }
+  }, []);
+
+  // Auto-select best voice when language changes or voices load
+  useEffect(() => {
+    if (availableVoices.length === 0) return;
+    const bestVoice = findBestNaturalVoice(interactiveLang, voicePersona);
+    if (bestVoice) {
+      setSelectedVoiceName(bestVoice.name);
+    }
+  }, [interactiveLang, voicePersona, availableVoices]);
+
+  // Auto scroll to bottom of dialogue history
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [interactiveTranscript, isAiProcessing, voiceActive]);
+
+  // Cleanup synthesizer speech and recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      if (recognitionInstanceRef.current) {
+        try {
+          recognitionInstanceRef.current.stop();
+        } catch (e) {}
+      }
+    };
+  }, []);
+
+  const getLocalizedGreeting = (langCode: string) => {
+    const langPrefix = langCode.split("-")[0].toLowerCase();
+    switch (langPrefix) {
+      case "hi":
+        return "नमस्ते! मैं आपकी क्या मदद कर सकती हूँ?";
+      case "mr":
+        return "नमस्कार! मी तुमची काय मदत करू शकते?";
+      case "es":
+        return "Hola, ¿cómo posso ayudarte?";
+      case "fr":
+        return "Bonjour, comment puis-je vous aider ?";
+      case "de":
+        return "Hallo, wie kann ich Ihnen helfen?";
+      case "ja":
+        return "こんにちは、どのようなご用件でしょうか？";
+      case "zh":
+        return "您好，我能为您做些什么？";
+      case "ar":
+        return "مرحباً، كيف يمكنني مساعدتك؟";
+      case "pt":
+        return "Olá, como posso ajudar você?";
+      case "bn":
+        return "নমস্কার, আমি আপনাকে কীভাবে সাহায্য করতে পারি?";
+      case "ta":
+        return "வணக்கம், நான் உங்களுக்கு எவ்வாறு உதவ முடியும்?";
+      case "te":
+        return "నమస్కారం, నేను మీకు ఎలా సహాయపడగలను?";
+      default:
+        return "Hello! How can I help you today?";
+    }
+  };
+
+  const findBestNaturalVoice = (langCode: string, persona: "female" | "male") => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return null;
+    const voices = window.speechSynthesis.getVoices();
+    const langPrefix = langCode.split("-")[0].toLowerCase();
+
+    const langVoices = voices.filter(v => v.lang.toLowerCase().startsWith(langPrefix) || v.lang.toLowerCase().includes(langPrefix));
+    
+    if (langVoices.length === 0) {
+      const enVoices = voices.filter(v => v.lang.toLowerCase().startsWith("en") || v.lang.toLowerCase().includes("en"));
+      if (enVoices.length > 0) {
+        return findBestInList(enVoices, persona);
+      }
+      return voices[0] || null;
+    }
+
+    return findBestInList(langVoices, persona);
+  };
+
+  const findBestInList = (list: SpeechSynthesisVoice[], persona: "female" | "male") => {
+    const naturalKeywords = ["natural", "neural", "google", "siri", "samantha", "daniel", "jenny", "guy", "aria", "premium"];
+    const personaKeywords = persona === "female" 
+      ? ["female", "samantha", "siri", "zira", "kalpana", "heera", "hazel", "jenny", "aria", "haruka", "karen"]
+      : ["male", "david", "guy", "hemant", "george", "ravi", "mark", "daniel", "microsoft"];
+
+    for (const pKeyword of personaKeywords) {
+      for (const nKeyword of naturalKeywords) {
+        const matched = list.find(v => {
+          const nameLower = v.name.toLowerCase();
+          return nameLower.includes(pKeyword) && nameLower.includes(nKeyword);
+        });
+        if (matched) return matched;
+      }
+    }
+
+    for (const pKeyword of personaKeywords) {
+      const matched = list.find(v => v.name.toLowerCase().includes(pKeyword));
+      if (matched) return matched;
+    }
+
+    for (const nKeyword of naturalKeywords) {
+      const matched = list.find(v => v.name.toLowerCase().includes(nKeyword));
+      if (matched) return matched;
+    }
+
+    return list[0];
+  };
+
+  const speakGreetingAndThenListen = () => {
+    if (typeof window === "undefined" || !window.speechSynthesis) {
+      startInteractiveListening();
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    setIsAiSpeaking(false);
+    setIsInteractiveListening(false);
+    recognitionTranscriptRef.current = "";
+
+    const greetingText = getLocalizedGreeting(interactiveLang);
+
+    const assistantMsg = {
+      role: "assistant" as const,
+      text: greetingText,
+      date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setInteractiveTranscript(prev => [...prev, assistantMsg]);
+
+    const cleanText = greetingText.trim();
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    interactiveSpeechUtteranceRef.current = utterance;
+
+    const bestVoice = findBestNaturalVoice(interactiveLang, voicePersona);
+    if (bestVoice) {
+      utterance.voice = bestVoice;
+    }
+
+    utterance.rate = voiceRate;
+    utterance.pitch = voicePitch;
+
+    utterance.onstart = () => {
+      setIsAiSpeaking(true);
+    };
+
+    utterance.onend = () => {
+      setIsAiSpeaking(false);
+      setTimeout(() => {
+        startInteractiveListening();
+      }, 150);
+    };
+
+    utterance.onerror = () => {
+      setIsAiSpeaking(false);
+      startInteractiveListening();
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const handleCoreNodeClick = () => {
+    if (isInteractiveListening) {
+      stopInteractiveListening();
+    } else if (isAiSpeaking) {
+      if (typeof window !== "undefined" && window.speechSynthesis) {
+        window.speechSynthesis.cancel();
+      }
+      setIsAiSpeaking(false);
+    } else {
+      speakGreetingAndThenListen();
+    }
+  };
+
+  const startInteractiveListening = () => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+      setIsAiSpeaking(false);
+    }
+
+    const SpeechRecognitionClass = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognitionClass) {
+      alert("Voice input is not supported in this browser. Please use Google Chrome, Safari or Microsoft Edge.");
+      return;
+    }
+
+    try {
+      const rec = new SpeechRecognitionClass();
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.lang = interactiveLang;
+
+      rec.onstart = () => {
+        setIsInteractiveListening(true);
+        setCurrentRecognitionText("");
+        recognitionTranscriptRef.current = "";
+      };
+
+      rec.onresult = (event: any) => {
+        let interim = "";
+        let final = "";
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            final += event.results[i][0].transcript;
+          } else {
+            interim += event.results[i][0].transcript;
+          }
+        }
+        const textValue = final || interim;
+        setCurrentRecognitionText(textValue);
+        recognitionTranscriptRef.current = textValue;
+      };
+
+      rec.onerror = (event: any) => {
+        console.error("Speech recognition error:", event);
+        setIsInteractiveListening(false);
+      };
+
+      rec.onend = () => {
+        setIsInteractiveListening(false);
+        const finalSpokenText = recognitionTranscriptRef.current;
+        if (finalSpokenText && finalSpokenText.trim()) {
+          handleProcessUserSpeech(finalSpokenText);
+        }
+        setCurrentRecognitionText("");
+        recognitionTranscriptRef.current = "";
+      };
+
+      recognitionInstanceRef.current = rec;
+      rec.start();
+    } catch (e) {
+      console.error("Failed to start speech recognition:", e);
+      setIsInteractiveListening(false);
+    }
+  };
+
+  const stopInteractiveListening = () => {
+    if (recognitionInstanceRef.current) {
+      recognitionInstanceRef.current.stop();
+    }
+    setIsInteractiveListening(false);
+  };
+
+  const handleProcessUserSpeech = async (text: string) => {
+    if (!text.trim()) return;
+
+    const userMsg = {
+      role: "user" as const,
+      text: text,
+      date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    setInteractiveTranscript(prev => [...prev, userMsg]);
+    setIsAiProcessing(true);
+
+    try {
+      const response = await fetch("/api/assistant/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-org-id": currentOrg.id || "org-nexus"
+        },
+        body: JSON.stringify({
+          message: text,
+          chatHistory: interactiveTranscript.map(t => ({
+            sender: t.role === "user" ? "user" : "assistant",
+            text: t.text
+          }))
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error("Voice assistant API call failed");
+      }
+
+      const data = await response.json();
+      const botReply = data.text || "I was unable to process a vocal response.";
+
+      const assistantMsg = {
+        role: "assistant" as const,
+        text: botReply,
+        date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setInteractiveTranscript(prev => [...prev, assistantMsg]);
+      setIsAiProcessing(false);
+
+      speakInteractiveResponse(botReply);
+
+    } catch (err) {
+      console.error("Interactive voice handler error:", err);
+      setIsAiProcessing(false);
+      const errorMsg = "I am sorry, but there was a connection glitch speaking to the core. Please try again.";
+      setInteractiveTranscript(prev => [
+        ...prev,
+        {
+          role: "assistant",
+          text: errorMsg,
+          date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        }
+      ]);
+      speakInteractiveResponse(errorMsg);
+    }
+  };
+
+  const speakInteractiveResponse = (text: string) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+
+    window.speechSynthesis.cancel();
+
+    const cleanText = text
+      .replace(/\*\*?/g, "")
+      .replace(/#/g, "")
+      .replace(/`{1,3}[\s\S]*?`{1,3}/g, "")
+      .replace(/\[([\s\S]*?)\]\([\s\S]*?\)/g, "$1")
+      .trim();
+
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    interactiveSpeechUtteranceRef.current = utterance;
+
+    const bestVoice = findBestNaturalVoice(interactiveLang, voicePersona);
+    if (bestVoice) {
+      utterance.voice = bestVoice;
+    }
+
+    utterance.rate = voiceRate;
+    utterance.pitch = voicePitch;
+
+    utterance.onstart = () => {
+      setIsAiSpeaking(true);
+    };
+
+    utterance.onend = () => {
+      setIsAiSpeaking(false);
+    };
+
+    utterance.onerror = () => {
+      setIsAiSpeaking(false);
+    };
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const clearInteractiveTranscript = () => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setIsAiSpeaking(false);
+    setIsInteractiveListening(false);
+    setInteractiveTranscript([
+      {
+        role: "assistant",
+        text: "Transcript cleared. Speak to me whenever you are ready!",
+        date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      }
+    ]);
+  };
+
+  const handleDeactivateVoice = () => {
+    if (typeof window !== "undefined" && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    if (recognitionInstanceRef.current) {
+      try {
+        recognitionInstanceRef.current.stop();
+      } catch (e) {}
+    }
+    setIsInteractiveListening(false);
+    setIsAiSpeaking(false);
+    setIsAiProcessing(false);
+    setVoiceActive(false);
+  };
   
   // Speed Insights States
   const [deviceFilter, setDeviceFilter] = useState<"desktop" | "mobile">("desktop");
@@ -301,157 +761,412 @@ export default function DashboardStats({
           {/* Graphs / Metrics Split Panel */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             
-            {/* Left 8 Columns: Revenue Overview Area Chart */}
-            <div className={`lg:col-span-8 p-6 rounded-2xl border ${
+            {/* Left 8 Columns: Products Running Out of Stock */}
+            <div className={`lg:col-span-8 p-6 rounded-2xl border flex flex-col justify-between ${
               theme === "dark" ? "bg-zinc-950/80 border-zinc-800/80" : "bg-white border-slate-100 shadow-xs"
-            }`} id="revenue_chart_container">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                <div>
-                  <h4 className={`text-sm font-semibold tracking-tight ${theme === "dark" ? "text-white" : "text-slate-900"}`}>
-                    Financial Standing Charts
-                  </h4>
-                  <p className="text-[11px] text-slate-400 dark:text-zinc-500">Historical analysis in Lakh scale</p>
+            }`} id="low_stock_products_container">
+              <div>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                  <div>
+                    <h4 className={`text-sm font-semibold tracking-tight flex items-center gap-2 ${theme === "dark" ? "text-white" : "text-slate-900"}`}>
+                      <AlertTriangle className="w-4 h-4 text-amber-500 animate-pulse" />
+                      Critical Stock Alerts
+                    </h4>
+                    <p className="text-[11px] text-slate-400 dark:text-zinc-500">Products currently running low or out of stock</p>
+                  </div>
+                  
+                  <span className={`text-[10px] font-mono px-2 py-1 rounded-full ${
+                    lowStockProducts.length > 0 
+                      ? (theme === "dark" ? "bg-amber-500/10 border border-amber-500/20 text-amber-400" : "bg-amber-500/5 border border-amber-500/10 text-amber-600")
+                      : (theme === "dark" ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400" : "bg-emerald-500/5 border border-emerald-500/10 text-emerald-600")
+                  }`}>
+                    {lowStockProducts.length} {lowStockProducts.length === 1 ? 'Product Needs Restock' : 'Products Need Restock'}
+                  </span>
                 </div>
-                
-                {/* Chart Views Toggle buttons */}
-                <div className={`flex items-center p-1 rounded-lg border text-[11px] font-semibold ${
-                  theme === "dark" ? "bg-zinc-900 border-zinc-800 text-zinc-400" : "bg-slate-100 border-slate-200 text-slate-600"
-                }`}>
-                  <button 
-                    onClick={() => setChartView("revenue")}
-                    className={`px-3 py-1 rounded-md transition-all ${chartView === "revenue" ? (theme === "dark" ? "bg-zinc-800 text-white" : "bg-white text-slate-950 shadow-xs") : "hover:text-slate-800 dark:hover:text-white"}`}
-                  >
-                    Revenue
-                  </button>
-                  <button 
-                    onClick={() => setChartView("profit")}
-                    className={`px-3 py-1 rounded-md transition-all ${chartView === "profit" ? (theme === "dark" ? "bg-zinc-800 text-white" : "bg-white text-slate-950 shadow-xs") : "hover:text-slate-800 dark:hover:text-white"}`}
-                  >
-                    Profit
-                  </button>
-                  <button 
-                    onClick={() => setChartView("expenses")}
-                    className={`px-3 py-1 rounded-md transition-all ${chartView === "expenses" ? (theme === "dark" ? "bg-zinc-800 text-white" : "bg-white text-slate-950 shadow-xs") : "hover:text-slate-800 dark:hover:text-white"}`}
-                  >
-                    Expenses
-                  </button>
-                </div>
-              </div>
 
-              {/* Area Chart with dynamic values and custom YAxis Lakh formatter */}
-              <div className="h-64 w-full" id="revenue_chart">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorMetric" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={theme === "dark" ? 0.2 : 0.1}/>
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke={theme === "dark" ? "rgba(255, 255, 255, 0.03)" : "rgba(0, 0, 0, 0.03)"} vertical={false} />
-                    <XAxis 
-                      dataKey="month" 
-                      stroke={theme === "dark" ? "rgba(255, 255, 255, 0.3)" : "rgba(0, 0, 0, 0.4)"} 
-                      fontSize={10}
-                      tickLine={false}
-                      axisLine={false}
-                    />
-                    <YAxis 
-                      stroke={theme === "dark" ? "rgba(255, 255, 255, 0.3)" : "rgba(0, 0, 0, 0.4)"} 
-                      fontSize={10}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(val) => `${val}L`}
-                    />
-                    <Tooltip 
-                      contentStyle={{
-                        backgroundColor: theme === "dark" ? "#121318" : "#ffffff",
-                        borderColor: theme === "dark" ? "#27272a" : "#e2e8f0",
-                        borderRadius: "8px",
-                        fontSize: "12px",
-                        color: theme === "dark" ? "#f4f4f5" : "#0f172a"
-                      }}
-                    />
-                    <Area 
-                      type="monotone" 
-                      dataKey={chartView} 
-                      stroke="#3b82f6" 
-                      strokeWidth={2}
-                      fillOpacity={1} 
-                      fill="url(#colorMetric)" 
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                {lowStockProducts.length > 0 ? (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className={`text-[10px] uppercase font-mono tracking-wider border-b ${
+                          theme === "dark" ? "border-zinc-800/60 text-zinc-500" : "border-slate-100 text-slate-400"
+                        }`}>
+                          <th className="pb-3 pl-2">Product Name</th>
+                          <th className="pb-3 text-center">SKU</th>
+                          <th className="pb-3 text-center">Stock / Min Stock</th>
+                          <th className="pb-3 text-right pr-2">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-850/40">
+                        {lowStockProducts.map((item) => {
+                          const percent = Math.min(100, Math.round((item.stock / (item.minStock || 15)) * 100));
+                          const isOutOfStock = item.stock === 0;
+                          
+                          return (
+                            <tr 
+                              key={item.id} 
+                              className="text-xs transition-colors hover:bg-zinc-850/10 dark:hover:bg-zinc-900/10"
+                            >
+                              <td className="py-4 pl-2 font-medium">
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-2 h-2 rounded-full ${isOutOfStock ? 'bg-rose-500 animate-pulse' : 'bg-amber-500'}`} />
+                                  <div>
+                                    <span className={theme === "dark" ? "text-zinc-200" : "text-slate-800"}>
+                                      {item.name}
+                                    </span>
+                                    <div className="text-[10px] text-slate-400 dark:text-zinc-500 block mt-0.5">
+                                      Price: ₹{item.price?.toLocaleString('en-IN') || 'N/A'}
+                                    </div>
+                                  </div>
+                                </div>
+                              </td>
+                              
+                              <td className="py-4 text-center font-mono text-[11px] text-slate-400 dark:text-zinc-400">
+                                {item.sku}
+                              </td>
+                              
+                              <td className="py-4">
+                                <div className="flex flex-col items-center justify-center max-w-[120px] mx-auto">
+                                  <div className="flex justify-between w-full text-[10px] mb-1 text-slate-400 dark:text-zinc-400 font-mono">
+                                    <span className={`font-semibold ${isOutOfStock ? 'text-rose-500' : 'text-amber-500'}`}>
+                                      {item.stock} left
+                                    </span>
+                                    <span>
+                                      Min: {item.minStock || 15}
+                                    </span>
+                                  </div>
+                                  <div className={`w-full h-1.5 rounded-full ${
+                                    theme === "dark" ? "bg-zinc-800" : "bg-slate-100"
+                                  } overflow-hidden`}>
+                                    <div 
+                                      className={`h-full rounded-full transition-all duration-500 ${
+                                        isOutOfStock ? 'bg-rose-500' : 'bg-amber-500'
+                                      }`}
+                                      style={{ width: `${percent}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </td>
+
+                              <td className="py-4 text-right pr-2">
+                                <button
+                                  onClick={() => handleReorder(item.id, item.name)}
+                                  disabled={restockingId === item.id}
+                                  className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                                    restockingId === item.id
+                                      ? "bg-zinc-850 text-zinc-500 cursor-not-allowed"
+                                      : "bg-blue-600 hover:bg-blue-500 text-white shadow-xs hover:shadow active:scale-95 cursor-pointer"
+                                  }`}
+                                >
+                                  {restockingId === item.id ? (
+                                    <span className="flex items-center gap-1 justify-end">
+                                      <RotateCw className="w-3 h-3 animate-spin" />
+                                      Ordering...
+                                    </span>
+                                  ) : "Quick Restock"}
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center mb-3">
+                      <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+                    </div>
+                    <h5 className={`text-sm font-semibold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>
+                      All Products Fully Stocked
+                    </h5>
+                    <p className="text-xs text-slate-400 dark:text-zinc-500 mt-1 max-w-sm">
+                      Every single product meets or exceeds your organization's safety stock requirements. Nice job!
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Right 4 Columns: Business Health Score Gauge */}
-            <div className={`lg:col-span-4 p-6 rounded-2xl border flex flex-col items-center justify-between relative ${
-              theme === "dark" ? "bg-zinc-950/80 border-zinc-800/80" : "bg-white border-slate-100 shadow-xs"
-            }`} id="health_gauge_panel">
-              <div className="absolute top-4 right-4">
-                <button 
-                  onClick={onTriggerHealthTune}
-                  title="Recalculate Integrity"
-                  className={`p-1.5 rounded-lg transition-colors ${
-                    theme === "dark" ? "bg-white/5 hover:bg-white/10 text-zinc-400" : "bg-slate-100 hover:bg-slate-200 text-slate-600"
-                  }`}
-                >
-                  <RotateCw className="w-3.5 h-3.5" />
-                </button>
-              </div>
+            {/* Right 4 Columns: Nova OS Voice Hub */}
+            <div className={`lg:col-span-4 p-5 rounded-2xl border flex flex-col justify-between relative min-h-[450px] overflow-hidden ${
+              theme === "dark" ? "bg-zinc-950/90 border-zinc-800/80 text-zinc-200" : "bg-white border-slate-100 shadow-sm text-slate-800"
+            }`} id="nova_voice_hub_panel">
+              
+              {!voiceActive ? (
+                /* INACTIVE STATE: Nova OS Logo Trigger for Voice Hub */
+                <div className="flex flex-col items-center justify-center flex-1 py-4 text-center">
+                  <button 
+                    onClick={() => {
+                      setVoiceActive(true);
+                      speakGreetingAndThenListen();
+                    }}
+                    className="group relative flex items-center justify-center p-3 rounded-full bg-zinc-900/50 hover:bg-zinc-900/80 dark:hover:bg-zinc-800/40 border border-zinc-800/60 transition-all duration-300 animate-in fade-in"
+                    title="Click to activate Nova OS Voice Hub"
+                  >
+                    <div className="absolute inset-0 rounded-full bg-purple-500/10 blur-xl group-hover:bg-purple-500/20 transition-all duration-300 animate-pulse"></div>
+                    <svg className="w-20 h-20 filter drop-shadow-[0_0_15px_rgba(147,51,234,0.4)] transition-all duration-300 group-hover:scale-105" viewBox="0 0 100 100">
+                      <defs>
+                        <linearGradient id="novaGradVoice" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stopColor="#3b82f6" />
+                          <stop offset="100%" stopColor="#c084fc" />
+                        </linearGradient>
+                      </defs>
+                      <circle cx="50" cy="50" r="44" className="fill-none stroke-[1.5] stroke-[url(#novaGradVoice)] stroke-dasharray-[12_6] animate-[spin_30s_linear_infinite]" />
+                      <circle cx="50" cy="50" r="36" className="fill-none stroke-[0.75] stroke-zinc-700/50 stroke-dasharray-[4_4]" />
+                      <path d="M35 30 V70 L50 48 L65 70 V30" className="stroke-[url(#novaGradVoice)] stroke-[6.5] fill-none stroke-linecap-round stroke-linejoin-round" />
+                    </svg>
+                  </button>
 
-              <div className="flex flex-col items-center gap-1.5 w-full text-center">
-                <Heart className="w-5 h-5 text-rose-500 fill-rose-500/20" />
-                <h4 className={`text-sm font-semibold tracking-tight ${theme === "dark" ? "text-white" : "text-slate-900"}`}>
-                  System Health Score
-                </h4>
-                <p className="text-[11px] text-slate-400 dark:text-zinc-500">Global health of organization parameters</p>
-              </div>
-
-              <div className="relative w-36 h-36 flex items-center justify-center mt-6">
-                <svg className="w-full h-full transform -rotate-90" viewBox="0 0 100 100">
-                  <circle 
-                    cx="50" 
-                    cy="50" 
-                    r="38" 
-                    className={`${theme === "dark" ? "stroke-zinc-800" : "stroke-slate-100"} fill-none`}
-                    strokeWidth="8"
-                  />
-                  <circle 
-                    cx="50" 
-                    cy="50" 
-                    r="38" 
-                    className={`fill-none transition-all duration-1000 ${getHealthColor(currentHealthScore)}`}
-                    strokeWidth="8"
-                    strokeDasharray="238.7"
-                    strokeDashoffset={238.7 - (238.7 * currentHealthScore) / 100}
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute flex flex-col items-center justify-center">
-                  <span className={`text-3xl font-extrabold tracking-tight ${theme === "dark" ? "text-white" : "text-slate-950"}`}>{currentHealthScore}%</span>
-                </div>
-              </div>
-
-              <div className="text-center w-full mt-6">
-                <span className={`px-2.5 py-1 text-[10px] font-bold rounded-full border ${getHealthBg(currentHealthScore)}`}>
-                  {currentHealthScore >= 90 ? "Excellent Standing" : "Needs Tuning"}
-                </span>
-                
-                <div className={`grid grid-cols-2 gap-4 mt-6 border-t pt-4 text-center font-mono text-[11px] ${
-                  theme === "dark" ? "border-zinc-800/80" : "border-slate-100"
-                }`}>
-                  <div>
-                    <div className="text-slate-400 dark:text-zinc-500 uppercase text-[9px] font-bold">API Connectors</div>
-                    <div className="font-semibold text-emerald-500 mt-0.5">SECURE</div>
+                  <div className="mt-5 space-y-2">
+                    <h4 className={`text-base font-extrabold tracking-tight flex items-center justify-center gap-1.5 ${theme === "dark" ? "text-white" : "text-slate-900"}`}>
+                      <Mic className="w-4.5 h-4.5 text-purple-400 animate-pulse" />
+                      Nova OS Voice Hub
+                    </h4>
+                    <p className="text-[11px] text-slate-400 dark:text-zinc-500 max-w-[240px] leading-relaxed mx-auto">
+                      Real-time multilingual voice intelligence agent. Tap to activate direct human-sounding conversation.
+                    </p>
                   </div>
-                  <div>
-                    <div className="text-slate-400 dark:text-zinc-500 uppercase text-[9px] font-bold">Invoices integrity</div>
-                    <div className={`font-semibold mt-0.5 ${theme === "dark" ? "text-white" : "text-slate-800"}`}>VERIFIED</div>
+
+                  <button 
+                    onClick={() => {
+                      setVoiceActive(true);
+                      speakGreetingAndThenListen();
+                    }}
+                    className="mt-6 px-4 py-2 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-purple-600 rounded-xl hover:from-blue-500 hover:to-purple-500 shadow-md shadow-purple-500/10 hover:shadow-purple-500/20 transform hover:-translate-y-0.5 transition-all duration-200 cursor-pointer"
+                  >
+                    Activate Voice Agent
+                  </button>
+                </div>
+              ) : (
+                /* ACTIVE STATE: Multilingual Voice Hub Client */
+                <div className="flex flex-col h-full flex-1 justify-between gap-3 animate-in fade-in duration-200 w-full">
+                  {/* Assistant Header */}
+                  <div className="flex items-center justify-between pb-2 border-b border-zinc-800/80 w-full">
+                    <div className="flex items-center gap-2">
+                      <div className="relative">
+                        <span className="absolute bottom-0 right-0 block h-2 w-2 rounded-full bg-emerald-500 ring-2 ring-zinc-950 animate-pulse"></span>
+                        <div className="p-1 rounded-lg bg-purple-500/10 text-purple-400">
+                          <Bot className="w-4 h-4" />
+                        </div>
+                      </div>
+                      <div>
+                        <h4 className={`text-xs font-bold ${theme === "dark" ? "text-white" : "text-slate-900"}`}>Nova Voice Hub</h4>
+                        <p className="text-[9px] text-emerald-500 font-mono font-bold animate-pulse">● AUTHORIZED LINE</p>
+                      </div>
+                    </div>
+
+                    <button 
+                      onClick={handleDeactivateVoice}
+                      title="Deactivate Voice Hub"
+                      className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                        theme === "dark" ? "bg-zinc-900 hover:bg-zinc-800 text-zinc-400" : "bg-slate-100 hover:bg-slate-200 text-slate-500"
+                      }`}
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* Compact Configuration Panel */}
+                  <div className={`p-2.5 rounded-xl border space-y-2 text-[10px] w-full ${
+                    theme === "dark" ? "bg-zinc-900/40 border-zinc-800/60" : "bg-slate-50 border-slate-200"
+                  }`}>
+                    {/* Language Dropdown & Persona Selector */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="space-y-1">
+                        <span className={`text-[8px] uppercase font-mono tracking-wider block ${theme === "dark" ? "text-zinc-500" : "text-slate-500 font-semibold"}`}>Language</span>
+                        <select
+                          value={interactiveLang}
+                          onChange={(e) => {
+                            setInteractiveLang(e.target.value);
+                            if (isInteractiveListening) stopInteractiveListening();
+                          }}
+                          className={`w-full border rounded-lg px-2 py-1 text-[10px] focus:outline-none ${
+                            theme === "dark" 
+                              ? "bg-zinc-900 border-zinc-800 text-white" 
+                              : "bg-white border-slate-200 text-slate-800"
+                          }`}
+                        >
+                          {INTERACTIVE_LANGUAGES.map((lang) => (
+                            <option key={lang.code} value={lang.code} className={theme === "dark" ? "bg-zinc-950 text-white" : "bg-white text-slate-900"}>
+                              {lang.flag} {lang.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <span className={`text-[8px] uppercase font-mono tracking-wider block ${theme === "dark" ? "text-zinc-500" : "text-slate-500 font-semibold"}`}>Persona Tone</span>
+                        <div className="grid grid-cols-2 gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setVoicePersona("female")}
+                            className={`py-1 rounded-lg text-[9px] font-bold border transition-all cursor-pointer text-center ${
+                              voicePersona === "female"
+                                ? "bg-purple-500/15 border-purple-500 text-purple-400 font-bold"
+                                : (theme === "dark" ? "bg-zinc-900 border-zinc-800 text-zinc-400" : "bg-white border-slate-250 text-slate-500")
+                            }`}
+                          >
+                            ♀ Female
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setVoicePersona("male")}
+                            className={`py-1 rounded-lg text-[9px] font-bold border transition-all cursor-pointer text-center ${
+                              voicePersona === "male"
+                                ? "bg-purple-500/15 border-purple-500 text-purple-400 font-bold"
+                                : (theme === "dark" ? "bg-zinc-900 border-zinc-800 text-zinc-400" : "bg-white border-slate-250 text-slate-500")
+                            }`}
+                          >
+                            ♂ Male
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Compact Speed & Pitch sliders */}
+                    <div className="grid grid-cols-2 gap-2 pt-1 border-t border-dashed border-zinc-800/40">
+                      <div className="space-y-0.5">
+                        <div className="flex justify-between text-[8px] uppercase font-mono text-zinc-400">
+                          <span>Speed</span>
+                          <span className="text-purple-400">{voiceRate}x</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.6"
+                          max="1.4"
+                          step="0.05"
+                          value={voiceRate}
+                          onChange={(e) => setVoiceRate(parseFloat(e.target.value))}
+                          className="w-full accent-purple-500 h-1 bg-zinc-300 dark:bg-zinc-800 rounded-lg cursor-pointer"
+                        />
+                      </div>
+                      <div className="space-y-0.5">
+                        <div className="flex justify-between text-[8px] uppercase font-mono text-zinc-400">
+                          <span>Pitch</span>
+                          <span className="text-purple-400">{voicePitch}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0.7"
+                          max="1.3"
+                          step="0.05"
+                          value={voicePitch}
+                          onChange={(e) => setVoicePitch(parseFloat(e.target.value))}
+                          className="w-full accent-purple-500 h-1 bg-zinc-300 dark:bg-zinc-800 rounded-lg cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Dynamic Voice Orb section */}
+                  <div className="flex flex-col items-center justify-center py-2 text-center flex-1 w-full">
+                    <div className="relative flex items-center justify-center">
+                      {/* Outer breathing background circle */}
+                      <div className={`absolute rounded-full blur-xl transition-all duration-1000 ${
+                        isInteractiveListening 
+                          ? "w-28 h-28 bg-rose-500/25 animate-ping" 
+                          : isAiProcessing
+                          ? "w-28 h-28 bg-amber-500/25 animate-pulse"
+                          : isAiSpeaking
+                          ? "w-28 h-28 bg-emerald-500/25 animate-pulse"
+                          : "w-24 h-24 bg-purple-500/10"
+                      }`}></div>
+
+                      {/* The interactive animated AI core node */}
+                      <button 
+                        onClick={handleCoreNodeClick}
+                        disabled={isAiProcessing}
+                        className={`relative z-10 p-4 rounded-full border transition-all duration-300 flex items-center justify-center shadow-lg cursor-pointer ${
+                          isInteractiveListening 
+                            ? "bg-rose-950/80 border-rose-500 text-rose-400 shadow-rose-500/10 scale-105" 
+                            : isAiSpeaking
+                            ? "bg-emerald-950/80 border-emerald-500 text-emerald-400 shadow-emerald-500/10"
+                            : "bg-zinc-900 hover:bg-zinc-800 border-purple-500/40 hover:border-purple-500 text-purple-400 shadow-purple-500/10 hover:shadow-purple-500/20"
+                        }`}
+                        title={isInteractiveListening ? "Stop listening" : isAiSpeaking ? "Stop speaking" : "Start speaking"}
+                      >
+                        {isInteractiveListening ? (
+                          <Mic className="w-7 h-7 animate-pulse text-rose-400" />
+                        ) : isAiProcessing ? (
+                          <Bot className="w-7 h-7 animate-spin text-amber-400" />
+                        ) : isAiSpeaking ? (
+                          <Volume2 className="w-7 h-7 animate-bounce text-emerald-400" />
+                        ) : (
+                          <Mic className="w-7 h-7 text-purple-400" />
+                        )}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 space-y-1">
+                      <h3 className="text-xs font-bold tracking-tight">
+                        {isInteractiveListening ? (
+                          <span className="text-rose-400 flex items-center justify-center gap-1 animate-pulse">
+                            <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span>
+                            Listening...
+                          </span>
+                        ) : isAiProcessing ? (
+                          <span className="text-amber-400 animate-pulse">Thinking...</span>
+                        ) : isAiSpeaking ? (
+                          <span className="text-emerald-400 flex items-center justify-center gap-1 animate-pulse">
+                            <Volume2 className="w-3.5 h-3.5" />
+                            Speaking...
+                          </span>
+                        ) : (
+                          <span className="text-purple-400">Tap Core to Talk</span>
+                        )}
+                      </h3>
+                    </div>
+
+                    {/* Subtitles / Realtime speech box */}
+                    {(isInteractiveListening || currentRecognitionText) && (
+                      <div className="mt-2.5 p-2 w-full max-w-xs rounded-lg border border-dashed border-purple-500/30 bg-purple-500/5 animate-in fade-in zoom-in-95">
+                        <p className="text-[8px] font-mono tracking-widest text-purple-400 uppercase font-bold mb-0.5">Live Input</p>
+                        <p className="text-[10px] font-mono text-zinc-300 italic truncate" title={currentRecognitionText}>
+                          "{currentRecognitionText || "Listening for speech..."}"
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Chat Transcript Timeline container */}
+                  <div className="space-y-2 mt-2 border-t border-zinc-800/40 pt-2 flex-1 flex flex-col justify-end w-full">
+                    <div className="flex items-center justify-between text-[9px] font-mono">
+                      <span className="text-purple-400 font-bold flex items-center gap-1">
+                        <MessageSquare className="w-3 h-3" /> Transcript
+                      </span>
+                      <button 
+                        onClick={clearInteractiveTranscript}
+                        className="text-zinc-500 hover:text-purple-400 transition-colors px-1.5 py-0.5 rounded border border-purple-500/10 bg-purple-500/5 cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    </div>
+
+                    {/* Chat items list */}
+                    <div className="space-y-2 max-h-[140px] overflow-y-auto pr-1 flex-1 w-full">
+                      {interactiveTranscript.map((chat, idx) => (
+                        <div 
+                          key={idx} 
+                          className={`flex flex-col ${chat.role === "user" ? "items-end" : "items-start"}`}
+                        >
+                          <div className={`max-w-[90%] px-3 py-1.5 rounded-xl text-[10px] leading-relaxed ${
+                            chat.role === "user"
+                              ? "bg-purple-600 text-white rounded-tr-xs"
+                              : (theme === "dark"
+                                  ? "bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-tl-xs"
+                                  : "bg-slate-150 text-slate-800 rounded-tl-xs")
+                          }`}>
+                            {chat.text}
+                          </div>
+                          <span className="text-[7px] text-zinc-500 font-mono px-1 mt-0.5">{chat.date}</span>
+                        </div>
+                      ))}
+                      <div ref={chatEndRef} />
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
             </div>
 
           </div>
@@ -802,13 +1517,15 @@ export default function DashboardStats({
               </div>
 
               {/* Path category tabs */}
-              <div className="flex items-center gap-1.5 text-xs font-semibold">
+               <div className="flex items-center gap-1.5 text-xs font-semibold">
                 <button 
                   onClick={() => setMetricTab("needs_improvement")}
                   className={`px-2.5 py-1 rounded-md border transition-all ${
                     metricTab === "needs_improvement"
                       ? "bg-amber-500/10 text-amber-500 border-amber-500/20 font-bold"
-                      : "text-slate-400 border-transparent hover:text-slate-600 dark:hover:text-zinc-300"
+                      : theme === "dark"
+                        ? "text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-white/5"
+                        : "text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-100"
                   }`}
                 >
                   Needs Improvement (3)
@@ -818,7 +1535,9 @@ export default function DashboardStats({
                   className={`px-2.5 py-1 rounded-md border transition-all ${
                     metricTab === "poor"
                       ? "bg-rose-500/10 text-rose-500 border-rose-500/20 font-bold"
-                      : "text-slate-400 border-transparent hover:text-slate-600 dark:hover:text-zinc-300"
+                      : theme === "dark"
+                        ? "text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-white/5"
+                        : "text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-100"
                   }`}
                 >
                   Poor (0)
@@ -828,7 +1547,9 @@ export default function DashboardStats({
                   className={`px-2.5 py-1 rounded-md border transition-all ${
                     metricTab === "great"
                       ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 font-bold"
-                      : "text-slate-400 border-transparent hover:text-slate-600 dark:hover:text-zinc-300"
+                      : theme === "dark"
+                        ? "text-zinc-500 border-transparent hover:text-zinc-300 hover:bg-white/5"
+                        : "text-slate-500 border-transparent hover:text-slate-800 hover:bg-slate-100"
                   }`}
                 >
                   Great (2)
